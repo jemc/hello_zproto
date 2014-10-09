@@ -42,6 +42,7 @@
 @end
 */
 
+#include "hello_zproto.h"
 #include "../include/hello_zproto_msg.h"
 
 //  Structure of our class

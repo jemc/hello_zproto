@@ -1,8 +1,17 @@
 /*  =========================================================================
     hello_zproto_msg - hello_zproto example protocol
     
-    Generated codec header for hello_zproto_msg
-    -------------------------------------------------------------------------
+    Codec header for hello_zproto_msg.
+
+    ** WARNING *************************************************************
+    THIS SOURCE FILE IS 100% GENERATED. If you edit this file, you will lose
+    your changes at the next build cycle. This is great for temporary printf
+    statements. DO NOT MAKE ANY CHANGES YOU WISH TO KEEP. The correct places
+    for commits are:
+
+     * The XML model used for this code generation: hello_zproto_msg.xml, or
+     * The code generation script that built this file: zproto_codec_c
+    ************************************************************************
     Copyright (C) 2014 the Authors                                         
                                                                            
     Permission is hereby granted, free of charge, to any person obtaining  
@@ -52,12 +61,12 @@
         content             msg         Message to be delivered
 */
 
-#define HELLO_ZPROTO_MSG_VERSION                  1
+#define HELLO_ZPROTO_MSG_VERSION            1
 
-#define HELLO_ZPROTO_MSG_LOG                      1
-#define HELLO_ZPROTO_MSG_STRUCTURES               2
-#define HELLO_ZPROTO_MSG_BINARY                   3
-#define HELLO_ZPROTO_MSG_FLAGS_SIZE               4
+#define HELLO_ZPROTO_MSG_LOG                1
+#define HELLO_ZPROTO_MSG_STRUCTURES         2
+#define HELLO_ZPROTO_MSG_BINARY             3
+#define HELLO_ZPROTO_MSG_FLAGS_SIZE         4
 
 #ifdef __cplusplus
 extern "C" {
@@ -75,9 +84,26 @@ hello_zproto_msg_t *
 void
     hello_zproto_msg_destroy (hello_zproto_msg_t **self_p);
 
-//  Receive and parse a hello_zproto_msg from the input
+//  Parse a hello_zproto_msg from zmsg_t. Returns a new object, or NULL if
+//  the message could not be parsed, or was NULL. Destroys msg and 
+//  nullifies the msg reference.
+hello_zproto_msg_t *
+    hello_zproto_msg_decode (zmsg_t **msg_p);
+
+//  Encode hello_zproto_msg into zmsg and destroy it. Returns a newly created
+//  object or NULL if error. Use when not in control of sending the message.
+zmsg_t *
+    hello_zproto_msg_encode (hello_zproto_msg_t **self_p);
+
+//  Receive and parse a hello_zproto_msg from the socket. Returns new object, 
+//  or NULL if error. Will block if there's no message waiting.
 hello_zproto_msg_t *
     hello_zproto_msg_recv (void *input);
+
+//  Receive and parse a hello_zproto_msg from the socket. Returns new object, 
+//  or NULL either if there was no input waiting, or the recv was interrupted.
+hello_zproto_msg_t *
+    hello_zproto_msg_recv_nowait (void *input);
 
 //  Send the hello_zproto_msg to the output, and destroy it
 int
@@ -87,7 +113,35 @@ int
 int
     hello_zproto_msg_send_again (hello_zproto_msg_t *self, void *output);
 
+//  Encode the LOG 
+zmsg_t *
+    hello_zproto_msg_encode_log (
+        uint16_t sequence,
+        byte level,
+        byte event,
+        uint16_t node,
+        uint16_t peer,
+        uint64_t time,
+        const char *data);
+
+//  Encode the STRUCTURES 
+zmsg_t *
+    hello_zproto_msg_encode_structures (
+        uint16_t sequence,
+        zlist_t *aliases,
+        zhash_t *headers);
+
+//  Encode the BINARY 
+zmsg_t *
+    hello_zproto_msg_encode_binary (
+        uint16_t sequence,
+        byte *flags,
+        zframe_t *address,
+        zmsg_t *content);
+
+
 //  Send the LOG to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     hello_zproto_msg_send_log (void *output,
         uint16_t sequence,
@@ -96,9 +150,10 @@ int
         uint16_t node,
         uint16_t peer,
         uint64_t time,
-        char *data);
+        const char *data);
     
 //  Send the STRUCTURES to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     hello_zproto_msg_send_structures (void *output,
         uint16_t sequence,
@@ -106,6 +161,7 @@ int
         zhash_t *headers);
     
 //  Send the BINARY to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     hello_zproto_msg_send_binary (void *output,
         uint16_t sequence,
@@ -119,7 +175,7 @@ hello_zproto_msg_t *
 
 //  Print contents of message to stdout
 void
-    hello_zproto_msg_dump (hello_zproto_msg_t *self);
+    hello_zproto_msg_print (hello_zproto_msg_t *self);
 
 //  Get/set the message routing id
 zframe_t *
@@ -132,7 +188,7 @@ int
     hello_zproto_msg_id (hello_zproto_msg_t *self);
 void
     hello_zproto_msg_set_id (hello_zproto_msg_t *self, int id);
-char *
+const char *
     hello_zproto_msg_command (hello_zproto_msg_t *self);
 
 //  Get/set the sequence field
@@ -172,40 +228,51 @@ void
     hello_zproto_msg_set_time (hello_zproto_msg_t *self, uint64_t time);
 
 //  Get/set the data field
-char *
+const char *
     hello_zproto_msg_data (hello_zproto_msg_t *self);
 void
-    hello_zproto_msg_set_data (hello_zproto_msg_t *self, char *format, ...);
+    hello_zproto_msg_set_data (hello_zproto_msg_t *self, const char *format, ...);
 
 //  Get/set the aliases field
 zlist_t *
     hello_zproto_msg_aliases (hello_zproto_msg_t *self);
+//  Get the aliases field and transfer ownership to caller
+zlist_t *
+    hello_zproto_msg_get_aliases (hello_zproto_msg_t *self);
+//  Set the aliases field, transferring ownership from caller
 void
-    hello_zproto_msg_set_aliases (hello_zproto_msg_t *self, zlist_t *aliases);
+    hello_zproto_msg_set_aliases (hello_zproto_msg_t *self, zlist_t **aliases_p);
 
 //  Iterate through the aliases field, and append a aliases value
-char *
+const char *
     hello_zproto_msg_aliases_first (hello_zproto_msg_t *self);
-char *
+const char *
     hello_zproto_msg_aliases_next (hello_zproto_msg_t *self);
 void
-    hello_zproto_msg_aliases_append (hello_zproto_msg_t *self, char *format, ...);
+    hello_zproto_msg_aliases_append (hello_zproto_msg_t *self, const char *format, ...);
 size_t
     hello_zproto_msg_aliases_size (hello_zproto_msg_t *self);
 
 //  Get/set the headers field
 zhash_t *
     hello_zproto_msg_headers (hello_zproto_msg_t *self);
+//  Get the headers field and transfer ownership to caller
+zhash_t *
+    hello_zproto_msg_get_headers (hello_zproto_msg_t *self);
+//  Set the headers field, transferring ownership from caller
 void
-    hello_zproto_msg_set_headers (hello_zproto_msg_t *self, zhash_t *headers);
+    hello_zproto_msg_set_headers (hello_zproto_msg_t *self, zhash_t **headers_p);
     
 //  Get/set a value in the headers dictionary
-char *
-    hello_zproto_msg_headers_string (hello_zproto_msg_t *self, char *key, char *default_value);
+const char *
+    hello_zproto_msg_headers_string (hello_zproto_msg_t *self,
+        const char *key, const char *default_value);
 uint64_t
-    hello_zproto_msg_headers_number (hello_zproto_msg_t *self, char *key, uint64_t default_value);
+    hello_zproto_msg_headers_number (hello_zproto_msg_t *self,
+        const char *key, uint64_t default_value);
 void
-    hello_zproto_msg_headers_insert (hello_zproto_msg_t *self, char *key, char *format, ...);
+    hello_zproto_msg_headers_insert (hello_zproto_msg_t *self,
+        const char *key, const char *format, ...);
 size_t
     hello_zproto_msg_headers_size (hello_zproto_msg_t *self);
 
@@ -215,22 +282,33 @@ byte *
 void
     hello_zproto_msg_set_flags (hello_zproto_msg_t *self, byte *flags);
 
-//  Get/set the address field
+//  Get a copy of the address field
 zframe_t *
     hello_zproto_msg_address (hello_zproto_msg_t *self);
+//  Get the address field and transfer ownership to caller
+zframe_t *
+    hello_zproto_msg_get_address (hello_zproto_msg_t *self);
+//  Set the address field, transferring ownership from caller
 void
-    hello_zproto_msg_set_address (hello_zproto_msg_t *self, zframe_t *frame);
+    hello_zproto_msg_set_address (hello_zproto_msg_t *self, zframe_t **frame_p);
 
-//  Get/set the content field
+//  Get a copy of the content field
 zmsg_t *
     hello_zproto_msg_content (hello_zproto_msg_t *self);
+//  Get the content field and transfer ownership to caller
+zmsg_t *
+    hello_zproto_msg_get_content (hello_zproto_msg_t *self);
+//  Set the content field, transferring ownership from caller
 void
-    hello_zproto_msg_set_content (hello_zproto_msg_t *self, zmsg_t *msg);
+    hello_zproto_msg_set_content (hello_zproto_msg_t *self, zmsg_t **msg_p);
 
 //  Self test of this class
 int
     hello_zproto_msg_test (bool verbose);
 //  @end
+
+//  For backwards compatibility with old codecs
+#define hello_zproto_msg_dump  hello_zproto_msg_print
 
 #ifdef __cplusplus
 }

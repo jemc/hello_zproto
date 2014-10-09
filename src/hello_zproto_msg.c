@@ -1,8 +1,17 @@
 /*  =========================================================================
     hello_zproto_msg - hello_zproto example protocol
 
-    Generated codec implementation for hello_zproto_msg
-    -------------------------------------------------------------------------
+    Codec class for hello_zproto_msg.
+
+    ** WARNING *************************************************************
+    THIS SOURCE FILE IS 100% GENERATED. If you edit this file, you will lose
+    your changes at the next build cycle. This is great for temporary printf
+    statements. DO NOT MAKE ANY CHANGES YOU WISH TO KEEP. The correct places
+    for commits are:
+
+     * The XML model used for this code generation: hello_zproto_msg.xml, or
+     * The code generation script that built this file: zproto_codec_c
+    ************************************************************************
     Copyright (C) 2014 the Authors                                         
                                                                            
     Permission is hereby granted, free of charge, to any person obtaining  
@@ -33,29 +42,28 @@
 @end
 */
 
-#include <czmq.h>
 #include "../include/hello_zproto_msg.h"
 
 //  Structure of our class
 
 struct _hello_zproto_msg_t {
-    zframe_t *routing_id;       //  Routing_id from ROUTER, if any
-    int id;                     //  hello_zproto_msg message ID
-    byte *needle;               //  Read/write pointer for serialization
-    byte *ceiling;              //  Valid upper limit for read pointer
-    uint16_t sequence;          //  
-    byte level;                 //  Log severity level
-    byte event;                 //  Type of event
-    uint16_t node;              //  Sending node
-    uint16_t peer;              //  Refers to this peer
-    uint64_t time;              //  Log date/time
-    char *data;                 //  Actual log message
-    zlist_t *aliases;           //  List of strings
-    zhash_t *headers;           //  Other random properties
-    size_t headers_bytes;       //  Size of dictionary content
-    byte flags [4];             //  A set of flags
-    zframe_t *address;          //  Return address as frame
-    zmsg_t *content;            //  Message to be delivered
+    zframe_t *routing_id;               //  Routing_id from ROUTER, if any
+    int id;                             //  hello_zproto_msg message ID
+    byte *needle;                       //  Read/write pointer for serialization
+    byte *ceiling;                      //  Valid upper limit for read pointer
+    uint16_t sequence;                  //  
+    byte level;                         //  Log severity level
+    byte event;                         //  Type of event
+    uint16_t node;                      //  Sending node
+    uint16_t peer;                      //  Refers to this peer
+    uint64_t time;                      //  Log date/time
+    char *data;                         //  Actual log message
+    zlist_t *aliases;                   //  List of strings
+    zhash_t *headers;                   //  Other random properties
+    size_t headers_bytes;               //  Size of dictionary content
+    byte flags [4];                     //  A set of flags
+    zframe_t *address;                  //  Return address as frame
+    zmsg_t *content;                    //  Message to be delivered
 };
 
 //  --------------------------------------------------------------------------
@@ -233,48 +241,32 @@ hello_zproto_msg_destroy (hello_zproto_msg_t **self_p)
 
 
 //  --------------------------------------------------------------------------
-//  Receive and parse a hello_zproto_msg from the socket. Returns new object or
-//  NULL if error. Will block if there's no message waiting.
+//  Parse a hello_zproto_msg from zmsg_t. Returns a new object, or NULL if
+//  the message could not be parsed, or was NULL. Destroys msg and 
+//  nullifies the msg reference.
 
 hello_zproto_msg_t *
-hello_zproto_msg_recv (void *input)
+hello_zproto_msg_decode (zmsg_t **msg_p)
 {
-    assert (input);
+    assert (msg_p);
+    zmsg_t *msg = *msg_p;
+    if (msg == NULL)
+        return NULL;
+        
     hello_zproto_msg_t *self = hello_zproto_msg_new (0);
-    zframe_t *frame = NULL;
+    //  Read and parse command in frame
+    zframe_t *frame = zmsg_pop (msg);
+    if (!frame) 
+        goto empty;             //  Malformed or empty
 
-    //  Read valid message frame from socket; we loop over any
-    //  garbage data we might receive from badly-connected peers
-    while (true) {
-        //  If we're reading from a ROUTER socket, get routing_id
-        if (zsocket_type (input) == ZMQ_ROUTER) {
-            zframe_destroy (&self->routing_id);
-            self->routing_id = zframe_recv (input);
-            if (!self->routing_id)
-                goto empty;         //  Interrupted
-            if (!zsocket_rcvmore (input))
-                goto malformed;
-        }
-        //  Read and parse command in frame
-        frame = zframe_recv (input);
-        if (!frame)
-            goto empty;             //  Interrupted
+    //  Get and check protocol signature
+    self->needle = zframe_data (frame);
+    self->ceiling = self->needle + zframe_size (frame);
+    uint16_t signature;
+    GET_NUMBER2 (signature);
+    if (signature != (0xAAA0 | 0))
+        goto empty;             //  Invalid signature
 
-        //  Get and check protocol signature
-        self->needle = zframe_data (frame);
-        self->ceiling = self->needle + zframe_size (frame);
-        uint16_t signature;
-        GET_NUMBER2 (signature);
-        if (signature == (0xAAA0 | 0))
-            break;                  //  Valid signature
-
-        //  Protocol assertion, drop message
-        while (zsocket_rcvmore (input)) {
-            zframe_destroy (&frame);
-            frame = zframe_recv (input);
-        }
-        zframe_destroy (&frame);
-    }
     //  Get message id and parse per message type
     GET_NUMBER1 (self->id);
 
@@ -322,15 +314,18 @@ hello_zproto_msg_recv (void *input)
         case HELLO_ZPROTO_MSG_BINARY:
             GET_NUMBER2 (self->sequence);
             GET_OCTETS (self->flags, 4);
-            //  Get next frame, leave current untouched
-            if (!zsocket_rcvmore (input))
-                goto malformed;
-            self->address = zframe_recv (input);
-            //  Get zero or more remaining frames,
-            //  leave current frame untouched
+            {
+                //  Get next frame, leave current untouched
+                zframe_t *address = zmsg_pop (msg);
+                if (!address)
+                    goto malformed;
+                self->address = address;
+            }
+            //  Get zero or more remaining frames, leaving current
+            //  frame untouched
             self->content = zmsg_new ();
-            while (zsocket_rcvmore (input))
-                zmsg_add (self->content, zframe_recv (input));
+            while (zmsg_size (msg))
+                zmsg_add (self->content, zmsg_pop (msg));
             break;
 
         default:
@@ -338,51 +333,33 @@ hello_zproto_msg_recv (void *input)
     }
     //  Successful return
     zframe_destroy (&frame);
+    zmsg_destroy (msg_p);
     return self;
 
     //  Error returns
     malformed:
-        printf ("E: malformed message '%d'\n", self->id);
+        zsys_error ("malformed message '%d'\n", self->id);
     empty:
         zframe_destroy (&frame);
+        zmsg_destroy (msg_p);
         hello_zproto_msg_destroy (&self);
         return (NULL);
 }
 
-//  Count size of key/value pair for serialization
-//  Key is encoded as string, value as longstr
-static int
-s_headers_count (const char *key, void *item, void *argument)
-{
-    hello_zproto_msg_t *self = (hello_zproto_msg_t *) argument;
-    self->headers_bytes += 1 + strlen (key) + 4 + strlen ((char *) item);
-    return 0;
-}
-
-//  Serialize headers key=value pair
-static int
-s_headers_write (const char *key, void *item, void *argument)
-{
-    hello_zproto_msg_t *self = (hello_zproto_msg_t *) argument;
-    PUT_STRING (key);
-    PUT_LONGSTR ((char *) item);
-    return 0;
-}
-
 
 //  --------------------------------------------------------------------------
-//  Send the hello_zproto_msg to the socket, and destroy it
-//  Returns 0 if OK, else -1
+//  Encode hello_zproto_msg into zmsg and destroy it. Returns a newly created
+//  object or NULL if error. Use when not in control of sending the message.
 
-int
-hello_zproto_msg_send (hello_zproto_msg_t **self_p, void *output)
+zmsg_t *
+hello_zproto_msg_encode (hello_zproto_msg_t **self_p)
 {
     assert (self_p);
     assert (*self_p);
-    assert (output);
-
-    //  Calculate size of serialized data
+    
     hello_zproto_msg_t *self = *self_p;
+    zmsg_t *msg = zmsg_new ();
+
     size_t frame_size = 2 + 1;          //  Signature and message ID
     switch (self->id) {
         case HELLO_ZPROTO_MSG_LOG:
@@ -422,7 +399,12 @@ hello_zproto_msg_send (hello_zproto_msg_t **self_p, void *output)
             if (self->headers) {
                 self->headers_bytes = 0;
                 //  Add up size of dictionary contents
-                zhash_foreach (self->headers, s_headers_count, self);
+                char *item = (char *) zhash_first (self->headers);
+                while (item) {
+                    self->headers_bytes += 1 + strlen ((const char *) zhash_cursor (self->headers));
+                    self->headers_bytes += 4 + strlen (item);
+                    item = (char *) zhash_next (self->headers);
+                }
             }
             frame_size += self->headers_bytes;
             break;
@@ -435,14 +417,13 @@ hello_zproto_msg_send (hello_zproto_msg_t **self_p, void *output)
             break;
             
         default:
-            printf ("E: bad message type '%d', not sent\n", self->id);
+            zsys_error ("bad message type '%d', not sent\n", self->id);
             //  No recovery, this is a fatal application error
             assert (false);
     }
     //  Now serialize message into the frame
     zframe_t *frame = zframe_new (NULL, frame_size);
     self->needle = zframe_data (frame);
-    int frame_flags = 0;
     PUT_NUMBER2 (0xAAA0 | 0);
     PUT_NUMBER1 (self->id);
 
@@ -475,7 +456,12 @@ hello_zproto_msg_send (hello_zproto_msg_t **self_p, void *output)
                 PUT_NUMBER4 (0);    //  Empty string array
             if (self->headers) {
                 PUT_NUMBER4 (zhash_size (self->headers));
-                zhash_foreach (self->headers, s_headers_write, self);
+                char *item = (char *) zhash_first (self->headers);
+                while (item) {
+                    PUT_STRING ((const char *) zhash_cursor ((zhash_t *) self->headers));
+                    PUT_LONGSTR (item);
+                    item = (char *) zhash_next (self->headers);
+                }
             }
             else
                 PUT_NUMBER4 (0);    //  Empty dictionary
@@ -484,44 +470,131 @@ hello_zproto_msg_send (hello_zproto_msg_t **self_p, void *output)
         case HELLO_ZPROTO_MSG_BINARY:
             PUT_NUMBER2 (self->sequence);
             PUT_OCTETS (self->flags, 4);
-            frame_flags = ZFRAME_MORE;
             break;
 
     }
-    //  If we're sending to a ROUTER, we send the routing_id first
-    if (zsocket_type (output) == ZMQ_ROUTER) {
-        assert (self->routing_id);
-        if (zframe_send (&self->routing_id, output, ZFRAME_MORE)) {
-            zframe_destroy (&frame);
-            hello_zproto_msg_destroy (self_p);
-            return -1;
-        }
-    }
     //  Now send the data frame
-    if (zframe_send (&frame, output, frame_flags)) {
-        zframe_destroy (&frame);
+    if (zmsg_append (msg, &frame)) {
+        zmsg_destroy (&msg);
         hello_zproto_msg_destroy (self_p);
-        return -1;
+        return NULL;
     }
     //  Now send any frame fields, in order
     if (self->id == HELLO_ZPROTO_MSG_BINARY) {
         //  If address isn't set, send an empty frame
         if (!self->address)
             self->address = zframe_new (NULL, 0);
-        frame_flags = zmsg_size (self->content)? ZFRAME_MORE: 0;
-        if (zframe_send (&self->address, output, frame_flags)) {
-            zframe_destroy (&frame);
+        if (zmsg_append (msg, &self->address)) {
+            zmsg_destroy (&msg);
             hello_zproto_msg_destroy (self_p);
-            return -1;
+            return NULL;
         }
     }
-    //  Now send the content field if set
-    if (self->id == HELLO_ZPROTO_MSG_BINARY)
-        zmsg_send (&self->content, output);
-        
+    //  Now send the message field if there is any
+    if (self->id == HELLO_ZPROTO_MSG_BINARY) {
+        if (self->content) {
+            zframe_t *frame = zmsg_pop (self->content);
+            while (frame) {
+                zmsg_append (msg, &frame);
+                frame = zmsg_pop (self->content);
+            }
+        }
+        else {
+            zframe_t *frame = zframe_new (NULL, 0);
+            zmsg_append (msg, &frame);
+        }
+    }
     //  Destroy hello_zproto_msg object
     hello_zproto_msg_destroy (self_p);
-    return 0;
+    return msg;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Receive and parse a hello_zproto_msg from the socket. Returns new object or
+//  NULL if error. Will block if there's no message waiting.
+
+hello_zproto_msg_t *
+hello_zproto_msg_recv (void *input)
+{
+    assert (input);
+    zmsg_t *msg = zmsg_recv (input);
+    if (!msg)
+        return NULL;            //  Interrupted
+    //  If message came from a router socket, first frame is routing_id
+    zframe_t *routing_id = NULL;
+    if (zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER) {
+        routing_id = zmsg_pop (msg);
+        //  If message was not valid, forget about it
+        if (!routing_id || !zmsg_next (msg))
+            return NULL;        //  Malformed or empty
+    }
+    hello_zproto_msg_t *hello_zproto_msg = hello_zproto_msg_decode (&msg);
+    if (hello_zproto_msg && zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER)
+        hello_zproto_msg->routing_id = routing_id;
+
+    return hello_zproto_msg;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Receive and parse a hello_zproto_msg from the socket. Returns new object,
+//  or NULL either if there was no input waiting, or the recv was interrupted.
+
+hello_zproto_msg_t *
+hello_zproto_msg_recv_nowait (void *input)
+{
+    assert (input);
+    zmsg_t *msg = zmsg_recv_nowait (input);
+    if (!msg)
+        return NULL;            //  Interrupted
+    //  If message came from a router socket, first frame is routing_id
+    zframe_t *routing_id = NULL;
+    if (zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER) {
+        routing_id = zmsg_pop (msg);
+        //  If message was not valid, forget about it
+        if (!routing_id || !zmsg_next (msg))
+            return NULL;        //  Malformed or empty
+    }
+    hello_zproto_msg_t *hello_zproto_msg = hello_zproto_msg_decode (&msg);
+    if (hello_zproto_msg && zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER)
+        hello_zproto_msg->routing_id = routing_id;
+
+    return hello_zproto_msg;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the hello_zproto_msg to the socket, and destroy it
+//  Returns 0 if OK, else -1
+
+int
+hello_zproto_msg_send (hello_zproto_msg_t **self_p, void *output)
+{
+    assert (self_p);
+    assert (*self_p);
+    assert (output);
+
+    //  Save routing_id if any, as encode will destroy it
+    hello_zproto_msg_t *self = *self_p;
+    zframe_t *routing_id = self->routing_id;
+    self->routing_id = NULL;
+
+    //  Encode hello_zproto_msg message to a single zmsg
+    zmsg_t *msg = hello_zproto_msg_encode (self_p);
+    
+    //  If we're sending to a ROUTER, send the routing_id first
+    if (zsocket_type (zsock_resolve (output)) == ZMQ_ROUTER) {
+        assert (routing_id);
+        zmsg_prepend (msg, &routing_id);
+    }
+    else
+        zframe_destroy (&routing_id);
+        
+    if (msg && zmsg_send (&msg, output) == 0)
+        return 0;
+    else
+        return -1;              //  Failed to encode, or send
 }
 
 
@@ -539,6 +612,71 @@ hello_zproto_msg_send_again (hello_zproto_msg_t *self, void *output)
 
 
 //  --------------------------------------------------------------------------
+//  Encode LOG message
+
+zmsg_t * 
+hello_zproto_msg_encode_log (
+    uint16_t sequence,
+    byte level,
+    byte event,
+    uint16_t node,
+    uint16_t peer,
+    uint64_t time,
+    const char *data)
+{
+    hello_zproto_msg_t *self = hello_zproto_msg_new (HELLO_ZPROTO_MSG_LOG);
+    hello_zproto_msg_set_sequence (self, sequence);
+    hello_zproto_msg_set_level (self, level);
+    hello_zproto_msg_set_event (self, event);
+    hello_zproto_msg_set_node (self, node);
+    hello_zproto_msg_set_peer (self, peer);
+    hello_zproto_msg_set_time (self, time);
+    hello_zproto_msg_set_data (self, data);
+    return hello_zproto_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode STRUCTURES message
+
+zmsg_t * 
+hello_zproto_msg_encode_structures (
+    uint16_t sequence,
+    zlist_t *aliases,
+    zhash_t *headers)
+{
+    hello_zproto_msg_t *self = hello_zproto_msg_new (HELLO_ZPROTO_MSG_STRUCTURES);
+    hello_zproto_msg_set_sequence (self, sequence);
+    zlist_t *aliases_copy = zlist_dup (aliases);
+    hello_zproto_msg_set_aliases (self, &aliases_copy);
+    zhash_t *headers_copy = zhash_dup (headers);
+    hello_zproto_msg_set_headers (self, &headers_copy);
+    return hello_zproto_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode BINARY message
+
+zmsg_t * 
+hello_zproto_msg_encode_binary (
+    uint16_t sequence,
+    byte *flags,
+    zframe_t *address,
+    zmsg_t *content)
+{
+    hello_zproto_msg_t *self = hello_zproto_msg_new (HELLO_ZPROTO_MSG_BINARY);
+    hello_zproto_msg_set_sequence (self, sequence);
+    hello_zproto_msg_set_flags (self, flags);
+    zframe_t *address_copy = zframe_dup (address);
+    hello_zproto_msg_set_address (self, &address_copy);
+    zmsg_t *content_copy = zmsg_dup (content);
+    hello_zproto_msg_set_content (self, &content_copy);
+    return hello_zproto_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
 //  Send the LOG to the socket in one step
 
 int
@@ -550,7 +688,7 @@ hello_zproto_msg_send_log (
     uint16_t node,
     uint16_t peer,
     uint64_t time,
-    char *data)
+    const char *data)
 {
     hello_zproto_msg_t *self = hello_zproto_msg_new (HELLO_ZPROTO_MSG_LOG);
     hello_zproto_msg_set_sequence (self, sequence);
@@ -576,8 +714,10 @@ hello_zproto_msg_send_structures (
 {
     hello_zproto_msg_t *self = hello_zproto_msg_new (HELLO_ZPROTO_MSG_STRUCTURES);
     hello_zproto_msg_set_sequence (self, sequence);
-    hello_zproto_msg_set_aliases (self, zlist_dup (aliases));
-    hello_zproto_msg_set_headers (self, zhash_dup (headers));
+    zlist_t *aliases_copy = zlist_dup (aliases);
+    hello_zproto_msg_set_aliases (self, &aliases_copy);
+    zhash_t *headers_copy = zhash_dup (headers);
+    hello_zproto_msg_set_headers (self, &headers_copy);
     return hello_zproto_msg_send (&self, output);
 }
 
@@ -596,8 +736,10 @@ hello_zproto_msg_send_binary (
     hello_zproto_msg_t *self = hello_zproto_msg_new (HELLO_ZPROTO_MSG_BINARY);
     hello_zproto_msg_set_sequence (self, sequence);
     hello_zproto_msg_set_flags (self, flags);
-    hello_zproto_msg_set_address (self, zframe_dup (address));
-    hello_zproto_msg_set_content (self, zmsg_dup (content));
+    zframe_t *address_copy = zframe_dup (address);
+    hello_zproto_msg_set_address (self, &address_copy);
+    zmsg_t *content_copy = zmsg_dup (content);
+    hello_zproto_msg_set_content (self, &content_copy);
     return hello_zproto_msg_send (&self, output);
 }
 
@@ -614,7 +756,6 @@ hello_zproto_msg_dup (hello_zproto_msg_t *self)
     hello_zproto_msg_t *copy = hello_zproto_msg_new (self->id);
     if (self->routing_id)
         copy->routing_id = zframe_dup (self->routing_id);
-
     switch (self->id) {
         case HELLO_ZPROTO_MSG_LOG:
             copy->sequence = self->sequence;
@@ -644,80 +785,65 @@ hello_zproto_msg_dup (hello_zproto_msg_t *self)
 }
 
 
-//  Dump headers key=value pair to stdout
-static int
-s_headers_dump (const char *key, void *item, void *argument)
-{
-    printf ("        %s=%s\n", key, (char *) item);
-    return 0;
-}
-
-
 //  --------------------------------------------------------------------------
 //  Print contents of message to stdout
 
 void
-hello_zproto_msg_dump (hello_zproto_msg_t *self)
+hello_zproto_msg_print (hello_zproto_msg_t *self)
 {
     assert (self);
     switch (self->id) {
         case HELLO_ZPROTO_MSG_LOG:
-            puts ("LOG:");
-            printf ("    sequence=%ld\n", (long) self->sequence);
-            printf ("    level=%ld\n", (long) self->level);
-            printf ("    event=%ld\n", (long) self->event);
-            printf ("    node=%ld\n", (long) self->node);
-            printf ("    peer=%ld\n", (long) self->peer);
-            printf ("    time=%ld\n", (long) self->time);
+            zsys_debug ("HELLO_ZPROTO_MSG_LOG:");
+            zsys_debug ("    sequence=%ld", (long) self->sequence);
+            zsys_debug ("    level=%ld", (long) self->level);
+            zsys_debug ("    event=%ld", (long) self->event);
+            zsys_debug ("    node=%ld", (long) self->node);
+            zsys_debug ("    peer=%ld", (long) self->peer);
+            zsys_debug ("    time=%ld", (long) self->time);
             if (self->data)
-                printf ("    data='%s'\n", self->data);
+                zsys_debug ("    data='%s'", self->data);
             else
-                printf ("    data=\n");
+                zsys_debug ("    data=");
             break;
             
         case HELLO_ZPROTO_MSG_STRUCTURES:
-            puts ("STRUCTURES:");
-            printf ("    sequence=%ld\n", (long) self->sequence);
-            printf ("    aliases={");
+            zsys_debug ("HELLO_ZPROTO_MSG_STRUCTURES:");
+            zsys_debug ("    sequence=%ld", (long) self->sequence);
+            zsys_debug ("    aliases=");
             if (self->aliases) {
                 char *aliases = (char *) zlist_first (self->aliases);
                 while (aliases) {
-                    printf (" '%s'", aliases);
+                    zsys_debug ("        '%s'", aliases);
                     aliases = (char *) zlist_next (self->aliases);
                 }
             }
-            printf (" }\n");
-            printf ("    headers={\n");
-            if (self->headers)
-                zhash_foreach (self->headers, s_headers_dump, self);
+            zsys_debug ("    headers=");
+            if (self->headers) {
+                char *item = (char *) zhash_first (self->headers);
+                while (item) {
+                    zsys_debug ("        %s=%s", zhash_cursor (self->headers), item);
+                    item = (char *) zhash_next (self->headers);
+                }
+            }
             else
-                printf ("(NULL)\n");
-            printf ("    }\n");
+                zsys_debug ("(NULL)");
             break;
             
         case HELLO_ZPROTO_MSG_BINARY:
-            puts ("BINARY:");
-            printf ("    sequence=%ld\n", (long) self->sequence);
-            printf ("    flags=");
-            int flags_index;
-            for (flags_index = 0; flags_index < 4; flags_index++) {
-                if (flags_index && (flags_index % 4 == 0))
-                    printf ("-");
-                printf ("%02X", self->flags [flags_index]);
-            }
-            printf ("\n");
-            printf ("    address={\n");
+            zsys_debug ("HELLO_ZPROTO_MSG_BINARY:");
+            zsys_debug ("    sequence=%ld", (long) self->sequence);
+            zsys_debug ("    flags=[ ... ]");
+            zsys_debug ("    address=");
             if (self->address)
                 zframe_print (self->address, NULL);
             else
-                printf ("(NULL)\n");
-            printf ("    }\n");
-            printf ("    content={\n");
+                zsys_debug ("(NULL)");
+            zsys_debug ("    content=");
             if (self->content)
-                zmsg_dump (self->content);
+                zmsg_print (self->content);
             else
-                printf ("(NULL)\n");
-            printf ("    }\n");
+                zsys_debug ("(NULL)");
             break;
             
     }
@@ -762,7 +888,7 @@ hello_zproto_msg_set_id (hello_zproto_msg_t *self, int id)
 //  --------------------------------------------------------------------------
 //  Return a printable command string
 
-char *
+const char *
 hello_zproto_msg_command (hello_zproto_msg_t *self)
 {
     assert (self);
@@ -891,7 +1017,7 @@ hello_zproto_msg_set_time (hello_zproto_msg_t *self, uint64_t time)
 //  --------------------------------------------------------------------------
 //  Get/set the data field
 
-char *
+const char *
 hello_zproto_msg_data (hello_zproto_msg_t *self)
 {
     assert (self);
@@ -899,7 +1025,7 @@ hello_zproto_msg_data (hello_zproto_msg_t *self)
 }
 
 void
-hello_zproto_msg_set_data (hello_zproto_msg_t *self, char *format, ...)
+hello_zproto_msg_set_data (hello_zproto_msg_t *self, const char *format, ...)
 {
     //  Format data from provided arguments
     assert (self);
@@ -912,7 +1038,7 @@ hello_zproto_msg_set_data (hello_zproto_msg_t *self, char *format, ...)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the aliases field
+//  Get the aliases field, without transferring ownership
 
 zlist_t *
 hello_zproto_msg_aliases (hello_zproto_msg_t *self)
@@ -921,21 +1047,33 @@ hello_zproto_msg_aliases (hello_zproto_msg_t *self)
     return self->aliases;
 }
 
-//  Greedy function, takes ownership of aliases; if you don't want that
-//  then use zlist_dup() to pass a copy of aliases
+//  Get the aliases field and transfer ownership to caller
 
-void
-hello_zproto_msg_set_aliases (hello_zproto_msg_t *self, zlist_t *aliases)
+zlist_t *
+hello_zproto_msg_get_aliases (hello_zproto_msg_t *self)
 {
     assert (self);
+    zlist_t *aliases = self->aliases;
+    self->aliases = NULL;
+    return aliases;
+}
+
+//  Set the aliases field, transferring ownership from caller
+
+void
+hello_zproto_msg_set_aliases (hello_zproto_msg_t *self, zlist_t **aliases_p)
+{
+    assert (self);
+    assert (aliases_p);
     zlist_destroy (&self->aliases);
-    self->aliases = aliases;
+    self->aliases = *aliases_p;
+    *aliases_p = NULL;
 }
 
 //  --------------------------------------------------------------------------
 //  Iterate through the aliases field, and append a aliases value
 
-char *
+const char *
 hello_zproto_msg_aliases_first (hello_zproto_msg_t *self)
 {
     assert (self);
@@ -945,7 +1083,7 @@ hello_zproto_msg_aliases_first (hello_zproto_msg_t *self)
         return NULL;
 }
 
-char *
+const char *
 hello_zproto_msg_aliases_next (hello_zproto_msg_t *self)
 {
     assert (self);
@@ -956,7 +1094,7 @@ hello_zproto_msg_aliases_next (hello_zproto_msg_t *self)
 }
 
 void
-hello_zproto_msg_aliases_append (hello_zproto_msg_t *self, char *format, ...)
+hello_zproto_msg_aliases_append (hello_zproto_msg_t *self, const char *format, ...)
 {
     //  Format into newly allocated string
     assert (self);
@@ -982,7 +1120,7 @@ hello_zproto_msg_aliases_size (hello_zproto_msg_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the headers field
+//  Get the headers field without transferring ownership
 
 zhash_t *
 hello_zproto_msg_headers (hello_zproto_msg_t *self)
@@ -991,27 +1129,38 @@ hello_zproto_msg_headers (hello_zproto_msg_t *self)
     return self->headers;
 }
 
-//  Greedy function, takes ownership of headers; if you don't want that
-//  then use zhash_dup() to pass a copy of headers
+//  Get the headers field and transfer ownership to caller
+
+zhash_t *
+hello_zproto_msg_get_headers (hello_zproto_msg_t *self)
+{
+    zhash_t *headers = self->headers;
+    self->headers = NULL;
+    return headers;
+}
+
+//  Set the headers field, transferring ownership from caller
 
 void
-hello_zproto_msg_set_headers (hello_zproto_msg_t *self, zhash_t *headers)
+hello_zproto_msg_set_headers (hello_zproto_msg_t *self, zhash_t **headers_p)
 {
     assert (self);
+    assert (headers_p);
     zhash_destroy (&self->headers);
-    self->headers = headers;
+    self->headers = *headers_p;
+    *headers_p = NULL;
 }
 
 //  --------------------------------------------------------------------------
 //  Get/set a value in the headers dictionary
 
-char *
-hello_zproto_msg_headers_string (hello_zproto_msg_t *self, char *key, char *default_value)
+const char *
+hello_zproto_msg_headers_string (hello_zproto_msg_t *self, const char *key, const char *default_value)
 {
     assert (self);
-    char *value = NULL;
+    const char *value = NULL;
     if (self->headers)
-        value = (char *) (zhash_lookup (self->headers, key));
+        value = (const char *) (zhash_lookup (self->headers, key));
     if (!value)
         value = default_value;
 
@@ -1019,7 +1168,7 @@ hello_zproto_msg_headers_string (hello_zproto_msg_t *self, char *key, char *defa
 }
 
 uint64_t
-hello_zproto_msg_headers_number (hello_zproto_msg_t *self, char *key, uint64_t default_value)
+hello_zproto_msg_headers_number (hello_zproto_msg_t *self, const char *key, uint64_t default_value)
 {
     assert (self);
     uint64_t value = default_value;
@@ -1033,7 +1182,7 @@ hello_zproto_msg_headers_number (hello_zproto_msg_t *self, char *key, uint64_t d
 }
 
 void
-hello_zproto_msg_headers_insert (hello_zproto_msg_t *self, char *key, char *format, ...)
+hello_zproto_msg_headers_insert (hello_zproto_msg_t *self, const char *key, const char *format, ...)
 {
     //  Format into newly allocated string
     assert (self);
@@ -1077,7 +1226,7 @@ hello_zproto_msg_set_flags (hello_zproto_msg_t *self, byte *flags)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the address field
+//  Get the address field without transferring ownership
 
 zframe_t *
 hello_zproto_msg_address (hello_zproto_msg_t *self)
@@ -1086,18 +1235,31 @@ hello_zproto_msg_address (hello_zproto_msg_t *self)
     return self->address;
 }
 
-//  Takes ownership of supplied frame
-void
-hello_zproto_msg_set_address (hello_zproto_msg_t *self, zframe_t *frame)
+//  Get the address field and transfer ownership to caller
+
+zframe_t *
+hello_zproto_msg_get_address (hello_zproto_msg_t *self)
 {
-    assert (self);
-    if (self->address)
-        zframe_destroy (&self->address);
-    self->address = frame;
+    zframe_t *address = self->address;
+    self->address = NULL;
+    return address;
 }
 
+//  Set the address field, transferring ownership from caller
+
+void
+hello_zproto_msg_set_address (hello_zproto_msg_t *self, zframe_t **frame_p)
+{
+    assert (self);
+    assert (frame_p);
+    zframe_destroy (&self->address);
+    self->address = *frame_p;
+    *frame_p = NULL;
+}
+
+
 //  --------------------------------------------------------------------------
-//  Get/set the content field
+//  Get the content field without transferring ownership
 
 zmsg_t *
 hello_zproto_msg_content (hello_zproto_msg_t *self)
@@ -1106,15 +1268,28 @@ hello_zproto_msg_content (hello_zproto_msg_t *self)
     return self->content;
 }
 
-//  Takes ownership of supplied msg
+//  Get the content field and transfer ownership to caller
+
+zmsg_t *
+hello_zproto_msg_get_content (hello_zproto_msg_t *self)
+{
+    zmsg_t *content = self->content;
+    self->content = NULL;
+    return content;
+}
+
+//  Set the content field, transferring ownership from caller
+
 void
-hello_zproto_msg_set_content (hello_zproto_msg_t *self, zmsg_t *msg)
+hello_zproto_msg_set_content (hello_zproto_msg_t *self, zmsg_t **msg_p)
 {
     assert (self);
-    if (self->content)
-        zmsg_destroy (&self->content);
-    self->content = msg;
+    assert (msg_p);
+    zmsg_destroy (&self->content);
+    self->content = *msg_p;
+    *msg_p = NULL;
 }
+
 
 
 //  --------------------------------------------------------------------------
@@ -1132,16 +1307,14 @@ hello_zproto_msg_test (bool verbose)
     hello_zproto_msg_destroy (&self);
 
     //  Create pair of sockets we can send through
-    zctx_t *ctx = zctx_new ();
-    assert (ctx);
-
-    void *output = zsocket_new (ctx, ZMQ_DEALER);
-    assert (output);
-    zsocket_bind (output, "inproc://selftest");
-    void *input = zsocket_new (ctx, ZMQ_ROUTER);
+    zsock_t *input = zsock_new (ZMQ_ROUTER);
     assert (input);
-    zsocket_connect (input, "inproc://selftest");
-    
+    zsock_connect (input, "inproc://selftest-hello_zproto_msg");
+
+    zsock_t *output = zsock_new (ZMQ_DEALER);
+    assert (output);
+    zsock_bind (output, "inproc://selftest-hello_zproto_msg");
+
     //  Encode/send/decode and verify each message type
     int instance;
     hello_zproto_msg_t *copy;
@@ -1166,6 +1339,7 @@ hello_zproto_msg_test (bool verbose)
     for (instance = 0; instance < 2; instance++) {
         self = hello_zproto_msg_recv (input);
         assert (self);
+        assert (hello_zproto_msg_routing_id (self));
         
         assert (hello_zproto_msg_sequence (self) == 123);
         assert (hello_zproto_msg_level (self) == 123);
@@ -1195,6 +1369,7 @@ hello_zproto_msg_test (bool verbose)
     for (instance = 0; instance < 2; instance++) {
         self = hello_zproto_msg_recv (input);
         assert (self);
+        assert (hello_zproto_msg_routing_id (self));
         
         assert (hello_zproto_msg_sequence (self) == 123);
         assert (hello_zproto_msg_aliases_size (self) == 2);
@@ -1216,9 +1391,11 @@ hello_zproto_msg_test (bool verbose)
     byte flags_data [HELLO_ZPROTO_MSG_FLAGS_SIZE];
     memset (flags_data, 123, HELLO_ZPROTO_MSG_FLAGS_SIZE);
     hello_zproto_msg_set_flags (self, flags_data);
-    hello_zproto_msg_set_address (self, zframe_new ("Captcha Diem", 12));
-    hello_zproto_msg_set_content (self, zmsg_new ());
-//    zmsg_addstr (hello_zproto_msg_content (self), "Hello, World");
+    zframe_t *binary_address = zframe_new ("Captcha Diem", 12);
+    hello_zproto_msg_set_address (self, &binary_address);
+    zmsg_t *binary_content = zmsg_new ();
+    hello_zproto_msg_set_content (self, &binary_content);
+    zmsg_addstr (hello_zproto_msg_content (self), "Hello, World");
     //  Send twice from same object
     hello_zproto_msg_send_again (self, output);
     hello_zproto_msg_send (&self, output);
@@ -1226,16 +1403,18 @@ hello_zproto_msg_test (bool verbose)
     for (instance = 0; instance < 2; instance++) {
         self = hello_zproto_msg_recv (input);
         assert (self);
+        assert (hello_zproto_msg_routing_id (self));
         
         assert (hello_zproto_msg_sequence (self) == 123);
         assert (hello_zproto_msg_flags (self) [0] == 123);
         assert (hello_zproto_msg_flags (self) [HELLO_ZPROTO_MSG_FLAGS_SIZE - 1] == 123);
         assert (zframe_streq (hello_zproto_msg_address (self), "Captcha Diem"));
-        assert (zmsg_size (hello_zproto_msg_content (self)) == 0);
+        assert (zmsg_size (hello_zproto_msg_content (self)) == 1);
         hello_zproto_msg_destroy (&self);
     }
 
-    zctx_destroy (&ctx);
+    zsock_destroy (&input);
+    zsock_destroy (&output);
     //  @end
 
     printf ("OK\n");

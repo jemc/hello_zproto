@@ -44,5 +44,6 @@
 
 #include "hello_zproto_msg.h"
 #include "citizen_msg.h"
+#include "citizen_server.h"
 
 #endif

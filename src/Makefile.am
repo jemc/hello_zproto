@@ -11,7 +11,8 @@ include_HEADERS = \
 libhello_zproto_la_SOURCES = \
     platform.h \
     hello_zproto_msg.c \
-    citizen_msg.c
+    citizen_msg.c \
+    citizen_server.c
 
 AM_CFLAGS = -g
 AM_CPPFLAGS = -I$(top_srcdir)/include
@@ -23,5 +24,6 @@ TESTS = hello_zproto_selftest
 
 # Produce generated models; do this manually in src directory
 code:
-	gsl -q hello_zproto_msg.xml citizen_msg.xml
+	gsl -q hello_zproto_msg.xml \
+         citizen_msg.xml citizen_server.xml
 

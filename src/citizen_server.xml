@@ -1,0 +1,31 @@
+
+<class
+    name = "citizen_server"
+    title = "Citizen server"
+    script = "zproto_server_c"
+    protocol_class = "citizen_msg"
+    package_dir = "../include"
+    source_dir = "."
+    project_header = "hello_zproto.h"
+    >
+    The part of a Citizen that receives and sustains connections with others.
+    
+    <state name = "as_stranger">
+        <event name = "IMLOST">
+            <action name = "send" message = "FOLLOWME" />
+        </event>
+        
+        <event name = "LEADME" next = "as_leader">
+            <action name = "add to followers" />
+        </event>
+        
+        <event name = "NOTHANKS">
+        </event>
+    </state>
+    
+    <state name = "as_leader">
+        <event name = "*">
+        </event>
+    </state>
+    
+</class>

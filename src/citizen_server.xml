@@ -21,9 +21,17 @@
         
         <event name = "NOTHANKS">
         </event>
+        
+        <event name = "expired"> <!-- Triggered after timeout by engine -->
+            <action name = "terminate" />
+        </event>
     </state>
     
     <state name = "as_leader" inherit = "defaults">
+        <event name = "expired"> <!-- Triggered after timeout by engine -->
+            <action name = "remove from followers" />
+            <action name = "terminate" />
+        </event>
     </state>
     
     <state name = "defaults">

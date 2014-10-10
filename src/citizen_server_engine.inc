@@ -29,7 +29,8 @@ typedef enum {
     imlost_event = 1,
     leadme_event = 2,
     nothanks_event = 3,
-    howareyou_event = 4
+    expired_event = 4,
+    howareyou_event = 5
 } event_t;
 
 //  Names for state machine logging and error reporting
@@ -47,6 +48,7 @@ s_event_name [] = {
     "IMLOST",
     "LEADME",
     "NOTHANKS",
+    "expired",
     "HOWAREYOU"
 };
  
@@ -109,6 +111,8 @@ static int
     s_client_handle_wakeup (zloop_t *loop, int timer_id, void *argument);
 static void
     add_to_followers (client_t *self);
+static void
+    remove_from_followers (client_t *self);
 static void
     compile_status (client_t *self);
 
@@ -457,6 +461,15 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == nothanks_event) {
                 }
                 else
+                if (self->event == expired_event) {
+                    if (!self->exception) {
+                        //  terminate
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ terminate", self->log_prefix);
+                        self->next_event = terminate_event;
+                    }
+                }
+                else
                 if (self->event == howareyou_event) {
                     if (!self->exception) {
                         //  compile status
@@ -486,6 +499,21 @@ s_client_execute (s_client_t *self, event_t event)
                 break;
 
             case as_leader_state:
+                if (self->event == expired_event) {
+                    if (!self->exception) {
+                        //  remove from followers
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ remove from followers", self->log_prefix);
+                        remove_from_followers (&self->client);
+                    }
+                    if (!self->exception) {
+                        //  terminate
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ terminate", self->log_prefix);
+                        self->next_event = terminate_event;
+                    }
+                }
+                else
                 if (self->event == howareyou_event) {
                     if (!self->exception) {
                         //  compile status
@@ -566,6 +594,16 @@ s_client_execute (s_client_t *self, event_t event)
                 self->next_event = s_client_filter_mailbox (self);
         }
     }
+}
+
+//  zloop callback when client inactivity timer expires
+
+static int
+s_client_handle_timeout (zloop_t *loop, int timer_id, void *argument)
+{
+    s_client_t *self = (s_client_t *) argument;
+    s_client_execute (self, expired_event);
+    return 0;
 }
 
 //  zloop callback when client wakeup timer expires
@@ -773,6 +811,16 @@ s_server_client_message (zloop_t *loop, zsock_t *reader, void *argument)
     }
     free (hashkey);
 
+    //  Any input from client counts as activity
+    if (client->expiry_timer) {
+        zloop_timer_end (self->loop, client->expiry_timer);
+        client->expiry_timer = 0;
+    }
+    //  Reset expiry timer if timeout is not zero
+    if (self->timeout)
+        client->expiry_timer = zloop_timer (
+            self->loop, self->timeout, 1, s_client_handle_timeout, client);
+        
     //  Queue request and possibly pass it to client state machine
     zlist_append (client->mailbox, msg);
     event_t event = s_client_filter_mailbox (client);

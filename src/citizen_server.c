@@ -154,11 +154,41 @@ citizen_server_test (bool verbose)
     assert (citizen_msg_follower_count (reply) == 1);
     citizen_msg_destroy (&reply);
     
+    // Force an expiration of the client with very short timeout,
+    // a message to reapply the timeout time, and a too-long sleep;
+    // then reset timeout to default time of 60 seconds.
+    zstr_sendx (server, "SET", "server/timeout", "10", NULL);
+    citizen_msg_send_howareyou (client);
+    reply = citizen_msg_recv (client);
+    citizen_msg_destroy (&reply);
+    zclock_sleep(20); // client connection should time out
+    zstr_sendx (server, "SET", "server/timeout", "60000", NULL);
+    
+    // Check that status now shows zero followers
+    request = citizen_msg_new (CITIZEN_MSG_HOWAREYOU);
+    citizen_msg_send (&request, client);
+    reply = citizen_msg_recv (client);
+    assert (reply);
+    assert (citizen_msg_id (reply) == CITIZEN_MSG_STATUS);
+    assert (citizen_msg_follower_count (reply) == 0);
+    citizen_msg_destroy (&reply);
+    
     // Cleanup
     zsock_destroy (&client);
     zactor_destroy (&server);
     //  @end
     printf ("OK\n");
+}
+
+
+//  ---------------------------------------------------------------------------
+//  compile_status
+//
+
+static void
+compile_status (client_t *self)
+{
+    citizen_msg_set_follower_count (self->reply, self->server->follower_count);
 }
 
 
@@ -174,11 +204,11 @@ add_to_followers (client_t *self)
 
 
 //  ---------------------------------------------------------------------------
-//  compile_status
+//  remove_from_followers
 //
 
 static void
-compile_status (client_t *self)
+remove_from_followers (client_t *self)
 {
-    citizen_msg_set_follower_count (self->reply, self->server->follower_count);
+    self->server->follower_count--;
 }

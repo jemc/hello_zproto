@@ -13,21 +13,30 @@
     
     <define name = "VERSION" value = "1" />
     
-    <message name = "IMLOST" id = "1">
+    <message name = "HOWAREYOU" id = "1">
+        Request the status of a citizen.
+    </message>
+    
+    <message name = "STATUS" id = "2">
+        The status of a citizen.
+        <field name = "follower_count" type = "number" size = "2" />
+    </message>
+    
+    <message name = "IMLOST" id = "11">
         Let another Citizen know that you're in need of direction.
     </message>
     
-    <message name = "FOLLOWME" id = "2">
+    <message name = "FOLLOWME" id = "12">
         Request the devotion of another Citizen,
         taking responsibility for giving them direction.
     </message>
     
-    <message name = "LEADME" id = "3">
+    <message name = "LEADME" id = "13">
         Pledge your sole devotion to a single Citizen,
         agreeing to follow their direction.
     </message>
     
-    <message name = "NOTHANKS" id = "4">
+    <message name = "NOTHANKS" id = "14">
         Your devotion is already pledged to another.
     </message>
     

@@ -19,7 +19,8 @@
 
 typedef enum {
     as_stranger_state = 1,
-    as_leader_state = 2
+    as_leader_state = 2,
+    defaults_state = 3
 } state_t;
 
 typedef enum {
@@ -27,7 +28,8 @@ typedef enum {
     NULL_event = 0,
     imlost_event = 1,
     leadme_event = 2,
-    nothanks_event = 3
+    nothanks_event = 3,
+    howareyou_event = 4
 } event_t;
 
 //  Names for state machine logging and error reporting
@@ -35,7 +37,8 @@ static char *
 s_state_name [] = {
     "(NONE)",
     "as_stranger",
-    "as_leader"
+    "as_leader",
+    "defaults"
 };
 
 static char *
@@ -43,7 +46,8 @@ s_event_name [] = {
     "(NONE)",
     "IMLOST",
     "LEADME",
-    "NOTHANKS"
+    "NOTHANKS",
+    "HOWAREYOU"
 };
  
 
@@ -105,6 +109,8 @@ static int
     s_client_handle_wakeup (zloop_t *loop, int timer_id, void *argument);
 static void
     add_to_followers (client_t *self);
+static void
+    compile_status (client_t *self);
 
 //  ---------------------------------------------------------------------------
 //  These methods are an internal API for actions
@@ -270,6 +276,9 @@ s_protocol_event (citizen_msg_t *request)
 {
     assert (request);
     switch (citizen_msg_id (request)) {
+        case CITIZEN_MSG_HOWAREYOU:
+            return howareyou_event;
+            break;
         case CITIZEN_MSG_IMLOST:
             return imlost_event;
             break;
@@ -375,7 +384,13 @@ s_client_filter_mailbox (s_client_t *self)
         if (self->state == as_stranger_state && event == nothanks_event)
             event_is_valid = true;
         else
-        if (self->state == as_leader_state)
+        if (self->state == as_stranger_state && event == howareyou_event)
+            event_is_valid = true;
+        else
+        if (self->state == as_leader_state && event == howareyou_event)
+            event_is_valid = true;
+        else
+        if (self->state == defaults_state && event == howareyou_event)
             event_is_valid = true;
         else
             event_is_valid = false;
@@ -441,6 +456,25 @@ s_client_execute (s_client_t *self, event_t event)
                 else
                 if (self->event == nothanks_event) {
                 }
+                else
+                if (self->event == howareyou_event) {
+                    if (!self->exception) {
+                        //  compile status
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ compile status", self->log_prefix);
+                        compile_status (&self->client);
+                    }
+                    if (!self->exception) {
+                        //  send STATUS
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ send STATUS",
+                                self->log_prefix);
+                        citizen_msg_set_id (self->client.reply, CITIZEN_MSG_STATUS);
+                        citizen_msg_send (&self->client.reply, self->server->router);
+                        self->client.reply = citizen_msg_new (0);
+                        citizen_msg_set_routing_id (self->client.reply, self->routing_id);
+                    }
+                }
                 else {
                     //  Handle unexpected internal events
                     zsys_warning ("%s: unhandled event %s in %s",
@@ -452,8 +486,60 @@ s_client_execute (s_client_t *self, event_t event)
                 break;
 
             case as_leader_state:
-                {
-                    //  Handle unexpected protocol events
+                if (self->event == howareyou_event) {
+                    if (!self->exception) {
+                        //  compile status
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ compile status", self->log_prefix);
+                        compile_status (&self->client);
+                    }
+                    if (!self->exception) {
+                        //  send STATUS
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ send STATUS",
+                                self->log_prefix);
+                        citizen_msg_set_id (self->client.reply, CITIZEN_MSG_STATUS);
+                        citizen_msg_send (&self->client.reply, self->server->router);
+                        self->client.reply = citizen_msg_new (0);
+                        citizen_msg_set_routing_id (self->client.reply, self->routing_id);
+                    }
+                }
+                else {
+                    //  Handle unexpected internal events
+                    zsys_warning ("%s: unhandled event %s in %s",
+                        self->log_prefix,
+                        s_event_name [self->event],
+                        s_state_name [self->state]);
+                    assert (false);
+                }
+                break;
+
+            case defaults_state:
+                if (self->event == howareyou_event) {
+                    if (!self->exception) {
+                        //  compile status
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ compile status", self->log_prefix);
+                        compile_status (&self->client);
+                    }
+                    if (!self->exception) {
+                        //  send STATUS
+                        if (self->server->verbose)
+                            zsys_debug ("%s:         $ send STATUS",
+                                self->log_prefix);
+                        citizen_msg_set_id (self->client.reply, CITIZEN_MSG_STATUS);
+                        citizen_msg_send (&self->client.reply, self->server->router);
+                        self->client.reply = citizen_msg_new (0);
+                        citizen_msg_set_routing_id (self->client.reply, self->routing_id);
+                    }
+                }
+                else {
+                    //  Handle unexpected internal events
+                    zsys_warning ("%s: unhandled event %s in %s",
+                        self->log_prefix,
+                        s_event_name [self->event],
+                        s_state_name [self->state]);
+                    assert (false);
                 }
                 break;
         }

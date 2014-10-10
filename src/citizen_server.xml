@@ -10,7 +10,7 @@
     >
     The part of a Citizen that receives and sustains connections with others.
     
-    <state name = "as_stranger">
+    <state name = "as_stranger" inherit = "defaults">
         <event name = "IMLOST">
             <action name = "send" message = "FOLLOWME" />
         </event>
@@ -23,8 +23,13 @@
         </event>
     </state>
     
-    <state name = "as_leader">
-        <event name = "*">
+    <state name = "as_leader" inherit = "defaults">
+    </state>
+    
+    <state name = "defaults">
+        <event name = "HOWAREYOU">
+            <action name = "compile status" />
+            <action name = "send" message = "STATUS" />
         </event>
     </state>
     

@@ -40,6 +40,11 @@
 
 /*  These are the citizen_msg messages:
 
+    HOWAREYOU - Request the status of a citizen.
+
+    STATUS - The status of a citizen.
+        follower_count      number 2    
+
     IMLOST - Let another Citizen know that you're in need of direction.
 
     FOLLOWME - Request the devotion of another Citizen,
@@ -53,10 +58,12 @@ agreeing to follow their direction.
 
 #define CITIZEN_MSG_VERSION                 1
 
-#define CITIZEN_MSG_IMLOST                  1
-#define CITIZEN_MSG_FOLLOWME                2
-#define CITIZEN_MSG_LEADME                  3
-#define CITIZEN_MSG_NOTHANKS                4
+#define CITIZEN_MSG_HOWAREYOU               1
+#define CITIZEN_MSG_STATUS                  2
+#define CITIZEN_MSG_IMLOST                  11
+#define CITIZEN_MSG_FOLLOWME                12
+#define CITIZEN_MSG_LEADME                  13
+#define CITIZEN_MSG_NOTHANKS                14
 
 #ifdef __cplusplus
 extern "C" {
@@ -103,6 +110,16 @@ int
 int
     citizen_msg_send_again (citizen_msg_t *self, void *output);
 
+//  Encode the HOWAREYOU 
+zmsg_t *
+    citizen_msg_encode_howareyou (
+);
+
+//  Encode the STATUS 
+zmsg_t *
+    citizen_msg_encode_status (
+        uint16_t follower_count);
+
 //  Encode the IMLOST 
 zmsg_t *
     citizen_msg_encode_imlost (
@@ -124,6 +141,17 @@ zmsg_t *
 );
 
 
+//  Send the HOWAREYOU to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
+int
+    citizen_msg_send_howareyou (void *output);
+    
+//  Send the STATUS to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
+int
+    citizen_msg_send_status (void *output,
+        uint16_t follower_count);
+    
 //  Send the IMLOST to the output in one step
 //  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
@@ -165,6 +193,12 @@ void
     citizen_msg_set_id (citizen_msg_t *self, int id);
 const char *
     citizen_msg_command (citizen_msg_t *self);
+
+//  Get/set the follower_count field
+uint16_t
+    citizen_msg_follower_count (citizen_msg_t *self);
+void
+    citizen_msg_set_follower_count (citizen_msg_t *self, uint16_t follower_count);
 
 //  Self test of this class
 int

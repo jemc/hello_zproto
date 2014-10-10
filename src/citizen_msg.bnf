@@ -1,22 +1,30 @@
 The following ABNF grammar defines the Citizen interaction protocol:
 
-    citizen_msg     = *(  IMLOST |  FOLLOWME |  LEADME |  NOTHANKS )
+    citizen_msg     = *(  HOWAREYOU |  STATUS |  IMLOST |  FOLLOWME |  LEADME |  NOTHANKS )
+
+    ;         Request the status of a citizen.
+    howareyou       = signature %d1
+    signature       = %xAA %xA0             ; two octets
+
+    ;         The status of a citizen.
+    status          = signature %d2 follower_count
+    follower_count  = number-2              ; 
 
     ;         Let another Citizen know that you're in need of direction.
-    imlost          = signature %d1
-    signature       = %xAA %xA0             ; two octets
+    imlost          = signature %d11
 
     ;         Request the devotion of another Citizen,
         taking responsibility for giving them direction.
-    followme        = signature %d2
+    followme        = signature %d12
 
     ;         Pledge your sole devotion to a single Citizen,
         agreeing to follow their direction.
-    leadme          = signature %d3
+    leadme          = signature %d13
 
     ;         Your devotion is already pledged to another.
-    nothanks        = signature %d4
+    nothanks        = signature %d14
 
     ; Strings are always length + text contents
 
     ; Numbers are unsigned integers in network byte order
+    number-2        = 2OCTET

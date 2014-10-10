@@ -115,12 +115,25 @@ citizen_server_test (bool verbose)
         zstr_send (server, "VERBOSE");
     zstr_sendx (server, "BIND", "ipc://@/citizen_server", NULL);
     
+    // Connect a client
     zsock_t *client = zsock_new (ZMQ_DEALER);
     assert (client);
     zsock_set_rcvtimeo (client, 2000);
     zsock_connect (client, "ipc://@/citizen_server");
     
+    // Message holders
     citizen_msg_t *request, *reply;
+    
+    // Check initial server status
+    request = citizen_msg_new (CITIZEN_MSG_HOWAREYOU);
+    citizen_msg_send (&request, client);
+    reply = citizen_msg_recv (client);
+    assert (reply);
+    assert (citizen_msg_id (reply) == CITIZEN_MSG_STATUS);
+    assert (citizen_msg_follower_count (reply) == 0);
+    citizen_msg_destroy (&reply);
+    
+    // Solicit a follow request
     request = citizen_msg_new (CITIZEN_MSG_IMLOST);
     citizen_msg_send (&request, client);
     reply = citizen_msg_recv (client);
@@ -128,6 +141,20 @@ citizen_server_test (bool verbose)
     assert (citizen_msg_id (reply) == CITIZEN_MSG_FOLLOWME);
     citizen_msg_destroy (&reply);
     
+    // Solicit a follow request
+    request = citizen_msg_new (CITIZEN_MSG_LEADME);
+    citizen_msg_send (&request, client);
+    
+    // Check that status now shows one follower
+    request = citizen_msg_new (CITIZEN_MSG_HOWAREYOU);
+    citizen_msg_send (&request, client);
+    reply = citizen_msg_recv (client);
+    assert (reply);
+    assert (citizen_msg_id (reply) == CITIZEN_MSG_STATUS);
+    assert (citizen_msg_follower_count (reply) == 1);
+    citizen_msg_destroy (&reply);
+    
+    // Cleanup
     zsock_destroy (&client);
     zactor_destroy (&server);
     //  @end
@@ -143,4 +170,15 @@ static void
 add_to_followers (client_t *self)
 {
     self->server->follower_count++;
+}
+
+
+//  ---------------------------------------------------------------------------
+//  compile_status
+//
+
+static void
+compile_status (client_t *self)
+{
+    citizen_msg_set_follower_count (self->reply, self->server->follower_count);
 }

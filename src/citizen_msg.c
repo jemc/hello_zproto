@@ -52,6 +52,7 @@ struct _citizen_msg_t {
     int id;                             //  citizen_msg message ID
     byte *needle;                       //  Read/write pointer for serialization
     byte *ceiling;                      //  Valid upper limit for read pointer
+    uint16_t follower_count;            //  
 };
 
 //  --------------------------------------------------------------------------
@@ -253,6 +254,13 @@ citizen_msg_decode (zmsg_t **msg_p)
     GET_NUMBER1 (self->id);
 
     switch (self->id) {
+        case CITIZEN_MSG_HOWAREYOU:
+            break;
+
+        case CITIZEN_MSG_STATUS:
+            GET_NUMBER2 (self->follower_count);
+            break;
+
         case CITIZEN_MSG_IMLOST:
             break;
 
@@ -299,6 +307,14 @@ citizen_msg_encode (citizen_msg_t **self_p)
 
     size_t frame_size = 2 + 1;          //  Signature and message ID
     switch (self->id) {
+        case CITIZEN_MSG_HOWAREYOU:
+            break;
+            
+        case CITIZEN_MSG_STATUS:
+            //  follower_count is a 2-byte integer
+            frame_size += 2;
+            break;
+            
         case CITIZEN_MSG_IMLOST:
             break;
             
@@ -323,6 +339,13 @@ citizen_msg_encode (citizen_msg_t **self_p)
     PUT_NUMBER1 (self->id);
 
     switch (self->id) {
+        case CITIZEN_MSG_HOWAREYOU:
+            break;
+
+        case CITIZEN_MSG_STATUS:
+            PUT_NUMBER2 (self->follower_count);
+            break;
+
         case CITIZEN_MSG_IMLOST:
             break;
 
@@ -450,6 +473,31 @@ citizen_msg_send_again (citizen_msg_t *self, void *output)
 
 
 //  --------------------------------------------------------------------------
+//  Encode HOWAREYOU message
+
+zmsg_t * 
+citizen_msg_encode_howareyou (
+)
+{
+    citizen_msg_t *self = citizen_msg_new (CITIZEN_MSG_HOWAREYOU);
+    return citizen_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode STATUS message
+
+zmsg_t * 
+citizen_msg_encode_status (
+    uint16_t follower_count)
+{
+    citizen_msg_t *self = citizen_msg_new (CITIZEN_MSG_STATUS);
+    citizen_msg_set_follower_count (self, follower_count);
+    return citizen_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
 //  Encode IMLOST message
 
 zmsg_t * 
@@ -494,6 +542,32 @@ citizen_msg_encode_nothanks (
 {
     citizen_msg_t *self = citizen_msg_new (CITIZEN_MSG_NOTHANKS);
     return citizen_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the HOWAREYOU to the socket in one step
+
+int
+citizen_msg_send_howareyou (
+    void *output)
+{
+    citizen_msg_t *self = citizen_msg_new (CITIZEN_MSG_HOWAREYOU);
+    return citizen_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the STATUS to the socket in one step
+
+int
+citizen_msg_send_status (
+    void *output,
+    uint16_t follower_count)
+{
+    citizen_msg_t *self = citizen_msg_new (CITIZEN_MSG_STATUS);
+    citizen_msg_set_follower_count (self, follower_count);
+    return citizen_msg_send (&self, output);
 }
 
 
@@ -558,6 +632,13 @@ citizen_msg_dup (citizen_msg_t *self)
     if (self->routing_id)
         copy->routing_id = zframe_dup (self->routing_id);
     switch (self->id) {
+        case CITIZEN_MSG_HOWAREYOU:
+            break;
+
+        case CITIZEN_MSG_STATUS:
+            copy->follower_count = self->follower_count;
+            break;
+
         case CITIZEN_MSG_IMLOST:
             break;
 
@@ -583,6 +664,15 @@ citizen_msg_print (citizen_msg_t *self)
 {
     assert (self);
     switch (self->id) {
+        case CITIZEN_MSG_HOWAREYOU:
+            zsys_debug ("CITIZEN_MSG_HOWAREYOU:");
+            break;
+            
+        case CITIZEN_MSG_STATUS:
+            zsys_debug ("CITIZEN_MSG_STATUS:");
+            zsys_debug ("    follower_count=%ld", (long) self->follower_count);
+            break;
+            
         case CITIZEN_MSG_IMLOST:
             zsys_debug ("CITIZEN_MSG_IMLOST:");
             break;
@@ -646,6 +736,12 @@ citizen_msg_command (citizen_msg_t *self)
 {
     assert (self);
     switch (self->id) {
+        case CITIZEN_MSG_HOWAREYOU:
+            return ("HOWAREYOU");
+            break;
+        case CITIZEN_MSG_STATUS:
+            return ("STATUS");
+            break;
         case CITIZEN_MSG_IMLOST:
             return ("IMLOST");
             break;
@@ -661,6 +757,24 @@ citizen_msg_command (citizen_msg_t *self)
     }
     return "?";
 }
+
+//  --------------------------------------------------------------------------
+//  Get/set the follower_count field
+
+uint16_t
+citizen_msg_follower_count (citizen_msg_t *self)
+{
+    assert (self);
+    return self->follower_count;
+}
+
+void
+citizen_msg_set_follower_count (citizen_msg_t *self, uint16_t follower_count)
+{
+    assert (self);
+    self->follower_count = follower_count;
+}
+
 
 
 //  --------------------------------------------------------------------------
@@ -689,6 +803,44 @@ citizen_msg_test (bool verbose)
     //  Encode/send/decode and verify each message type
     int instance;
     citizen_msg_t *copy;
+    self = citizen_msg_new (CITIZEN_MSG_HOWAREYOU);
+    
+    //  Check that _dup works on empty message
+    copy = citizen_msg_dup (self);
+    assert (copy);
+    citizen_msg_destroy (&copy);
+
+    //  Send twice from same object
+    citizen_msg_send_again (self, output);
+    citizen_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = citizen_msg_recv (input);
+        assert (self);
+        assert (citizen_msg_routing_id (self));
+        
+        citizen_msg_destroy (&self);
+    }
+    self = citizen_msg_new (CITIZEN_MSG_STATUS);
+    
+    //  Check that _dup works on empty message
+    copy = citizen_msg_dup (self);
+    assert (copy);
+    citizen_msg_destroy (&copy);
+
+    citizen_msg_set_follower_count (self, 123);
+    //  Send twice from same object
+    citizen_msg_send_again (self, output);
+    citizen_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = citizen_msg_recv (input);
+        assert (self);
+        assert (citizen_msg_routing_id (self));
+        
+        assert (citizen_msg_follower_count (self) == 123);
+        citizen_msg_destroy (&self);
+    }
     self = citizen_msg_new (CITIZEN_MSG_IMLOST);
     
     //  Check that _dup works on empty message

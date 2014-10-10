@@ -34,6 +34,7 @@ int main (int argc, char *argv [])
 
     printf ("Running self tests...\n");
     hello_zproto_msg_test (verbose);
+    citizen_msg_test (verbose);
     printf ("Tests passed OK\n");
     return 0;
 }

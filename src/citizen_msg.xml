@@ -1,0 +1,34 @@
+
+<class
+    name = "citizen_msg"
+    signature = "0"
+    title = "Citizen interaction protocol"
+    script = "zproto_codec_c"
+    header = "../include"
+    source = "."
+    project_header = "hello_zproto.h"
+    >
+    
+    <include filename = "license.xml" />
+    
+    <define name = "VERSION" value = "1" />
+    
+    <message name = "IMLOST" id = "1">
+        Let another Citizen know that you're in need of direction.
+    </message>
+    
+    <message name = "FOLLOWME" id = "2">
+        Request the devotion of another Citizen,
+        taking responsibility for giving them direction.
+    </message>
+    
+    <message name = "LEADME" id = "3">
+        Pledge your sole devotion to a single Citizen,
+        agreeing to follow their direction.
+    </message>
+    
+    <message name = "NOTHANKS" id = "4">
+        Your devotion is already pledged to another.
+    </message>
+    
+</class>
